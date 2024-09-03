@@ -1,15 +1,23 @@
 <!DOCTYPE html>
-<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+<meta name='viewport' content='width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0'>
 <!-- three.js library -->
-<script src='vendor/three.js/build/three.min.js'></script>
-<script src="vendor/three.js/examples/js/libs/stats.min.js"></script>
+<script src='vendor/three.js/build/three.js'></script>
+<script src='vendor/three.js/examples/js/libs/stats.min.js'></script>
 <!-- ar.js -->
 <script src="../build/ar-threex.js"></script>
 <script>THREEx.ArToolkitContext.baseURL = '../'</script>
 
+<!-- Bind window error for error handling -->
+<script>
+	window.addEventListener('error', function (event) {
+		alert("ERROR: " + event.message + " at " + event.filename + " : " + event.lineno + " : " + event.colno);
+	});
+</script>
+
 <body style='margin : 0px; overflow: hidden; font-family: Monospace;'>
-	<div style='position: absolute; top: 10px; width:100%; text-align: center; z-index: 1;'>
-		<a href="https://github.com/AR-js-org/AR.js/" target="_blank">AR.js</a> - three.js mobile performance
+	<div style='position: absolute; top: 10px; width:100%; text-align: center;z-index:1' ;>
+		<a href='https://github.com/AR-js-org/AR.js/' target='_blank'>AR.js</a> - default setting - webcam + hiro +
+		profile + lerp
 		<br />
 		Contact me any time at <a href='https://twitter.com/nicolocarp' target='_blank'>@nicolocarp</a>
 	</div>
@@ -24,7 +32,7 @@
 			alpha: true
 		});
 		renderer.setClearColor(new THREE.Color('lightgrey'), 0)
-		// renderer.setPixelRatio( 1/2 );
+		// renderer.setPixelRatio( 2 );
 		renderer.setSize(window.innerWidth, window.innerHeight);
 		renderer.domElement.style.position = 'absolute'
 		renderer.domElement.style.top = '0px'
@@ -33,7 +41,7 @@
 
 		// array of functions for the rendering loop
 		var onRenderFcts = [];
-		var arToolkitContext, artoolkitMarker, markerRoot;
+		var arToolkitContext, arMarkerControls, markerGroup;
 
 		// init scene and camera
 		var scene = new THREE.Scene();
@@ -46,30 +54,35 @@
 		var camera = new THREE.Camera();
 		scene.add(camera);
 
-		markerRoot = new THREE.Group
-		scene.add(markerRoot)
+		markerGroup = new THREE.Group
+		scene.add(markerGroup)
 
 		////////////////////////////////////////////////////////////////////////////////
 		//          handle arToolkitSource
 		////////////////////////////////////////////////////////////////////////////////
 
-		var arToolkitSource = new THREEx.ArToolkitSource({
-			// to read from the webcam
-			sourceType: 'webcam',
+		var artoolkitProfile = new THREEx.ArToolkitProfile()
+		artoolkitProfile.sourceWebcam()
+		// artoolkitProfile.sourceVideo(THREEx.ArToolkitContext.baseURL + '../data/videos/headtracking.mp4').kanjiMarker();
+		// artoolkitProfile.sourceImage(THREEx.ArToolkitContext.baseURL + '../data/images/img.jpg').hiroMarker()
 
-			// to read from an image
-			// sourceType : 'image',
-			// sourceUrl : THREEx.ArToolkitContext.baseURL + '../data/images/img.jpg',
+		var arToolkitSource = new THREEx.ArToolkitSource(artoolkitProfile.sourceParameters)
 
-			// to read from a video
-			// sourceType : 'video',
-			// sourceUrl : THREEx.ArToolkitContext.baseURL + '../data/videos/headtracking.mp4',
-		})
+		arToolkitSource.init(() => {
+			arToolkitSource.domElement.addEventListener('canplay', () => {
+				console.log(
+					'canplay',
+					'actual source dimensions',
+					arToolkitSource.domElement.videoWidth,
+					arToolkitSource.domElement.videoHeight
+				);
 
-		arToolkitSource.init(function onReady() {
-			initARContext()
-			onResize()
-		})
+				initARContext();
+			});
+
+			window.arToolkitSource = arToolkitSource;
+			onResize();
+		});
 
 		// handle resize
 		window.addEventListener('resize', function () {
@@ -82,37 +95,36 @@
 				arToolkitSource.copyElementSizeTo(window.arToolkitContext.arController.canvas)
 			}
 		}
+
 		////////////////////////////////////////////////////////////////////////////////
 		//          initialize arToolkitContext
 		////////////////////////////////////////////////////////////////////////////////
-
-
-		// create atToolkitContext
 		function initARContext() {
 			console.log('initARContext()');
 
-			arToolkitContext = new THREEx.ArToolkitContext({
-				cameraParametersUrl: THREEx.ArToolkitContext.baseURL + '../data/data/camera_para.dat',
-				detectionMode: 'mono',
-				maxDetectionRate: 30,
-				canvasWidth: 80 * 3,
-				canvasHeight: 60 * 3,
-			})
-			// initialize it
-			arToolkitContext.init(function onCompleted() {
-				// copy projection matrix to camera
+			// CONTEXT
+			arToolkitContext = new THREEx.ArToolkitContext(artoolkitProfile.contextParameters)
+
+			arToolkitContext.init(() => {
 				camera.projectionMatrix.copy(arToolkitContext.getProjectionMatrix());
+
 				arToolkitContext.arController.orientation = getSourceOrientation();
 				arToolkitContext.arController.options.orientation = getSourceOrientation();
 
 				console.log('arToolkitContext', arToolkitContext);
 				window.arToolkitContext = arToolkitContext;
-			})
-			artoolkitMarker = new THREEx.ArMarkerControls(arToolkitContext, markerRoot, {
+			});
+
+
+
+			// MARKER
+			arMarkerControls = new THREEx.ArMarkerControls(arToolkitContext, markerGroup, {
 				type: 'pattern',
-				patternUrl: THREEx.ArToolkitContext.baseURL + '../data/data/patt.hiro'
-				// patternUrl : THREEx.ArToolkitContext.baseURL + '../data/data/patt.kanji'
+				patternUrl: THREEx.ArToolkitContext.baseURL + '../data/data/patt.hiro',
 			})
+
+			console.log('ArMarkerControls', arMarkerControls);
+			window.arMarkerControls = arMarkerControls;
 		}
 
 		function getSourceOrientation() {
@@ -145,30 +157,16 @@
 		})
 
 
-		////////////////////////////////////////////////////////////////////////////////
-		//          Create a ArMarkerControls
-		////////////////////////////////////////////////////////////////////////////////
-
-		var markerRoot = new THREE.Group
-		scene.add(markerRoot)
-
-
-		// build a smoothedControls
-		var smoothedRoot = new THREE.Group()
-		scene.add(smoothedRoot)
-		var smoothedControls = new THREEx.ArSmoothedControls(smoothedRoot, {
-			lerpPosition: 0.4,
-			lerpQuaternion: 0.3,
-			lerpScale: 1,
-		})
-		onRenderFcts.push(function (delta) {
-			smoothedControls.update(markerRoot)
-		})
 		//////////////////////////////////////////////////////////////////////////////////
 		//		add an object in the scene
 		//////////////////////////////////////////////////////////////////////////////////
 
-		var arWorldRoot = smoothedRoot
+
+		var markerScene = new THREE.Scene()
+		markerGroup.add(markerScene)
+
+		var mesh = new THREE.AxesHelper()
+		markerScene.add(mesh)
 
 		// add a torus knot
 		var geometry = new THREE.BoxGeometry(1, 1, 1);
@@ -179,16 +177,16 @@
 		});
 		var mesh = new THREE.Mesh(geometry, material);
 		mesh.position.y = geometry.parameters.height / 2
-		arWorldRoot.add(mesh);
+		markerScene.add(mesh)
 
 		var geometry = new THREE.TorusKnotGeometry(0.3, 0.1, 64, 16);
 		var material = new THREE.MeshNormalMaterial();
 		var mesh = new THREE.Mesh(geometry, material);
 		mesh.position.y = 0.5
-		arWorldRoot.add(mesh);
+		markerScene.add(mesh);
 
-		onRenderFcts.push(function () {
-			mesh.rotation.x += 0.1
+		onRenderFcts.push(function (delta) {
+			mesh.rotation.x += delta * Math.PI
 		})
 
 		//////////////////////////////////////////////////////////////////////////////////
