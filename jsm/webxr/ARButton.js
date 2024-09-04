@@ -6,56 +6,15 @@ class ARButton {
 
 		function showStartAR( /*device*/ ) {
 
-			if ( sessionInit.domOverlay === undefined ) {
-
-				const overlay = document.createElement( 'div' );
-				overlay.style.display = 'none';
-				document.body.appendChild( overlay );
-
-				const svg = document.createElementNS( 'http://www.w3.org/2000/svg', 'svg' );
-				svg.setAttribute( 'width', 38 );
-				svg.setAttribute( 'height', 38 );
-				svg.style.position = 'absolute';
-				svg.style.right = '20px';
-				svg.style.top = '20px';
-				svg.addEventListener( 'click', function () {
-
-					currentSession.end();
-
-				} );
-				overlay.appendChild( svg );
-
-				const path = document.createElementNS( 'http://www.w3.org/2000/svg', 'path' );
-				path.setAttribute( 'd', 'M 12,12 L 28,28 M 28,12 12,28' );
-				path.setAttribute( 'stroke', '#fff' );
-				path.setAttribute( 'stroke-width', 2 );
-				svg.appendChild( path );
-
-				if ( sessionInit.optionalFeatures === undefined ) {
-
-					sessionInit.optionalFeatures = [];
-
-				}
-
-				sessionInit.optionalFeatures.push( 'dom-overlay' );
-				sessionInit.domOverlay = { root: overlay };
-
-			}
-
-			//
-
 			let currentSession = null;
 
-			async function onSessionStarted( session ) {
+			function onSessionStarted( session ) {
 
 				session.addEventListener( 'end', onSessionEnded );
 
 				renderer.xr.setReferenceSpaceType( 'local' );
-
-				await renderer.xr.setSession( session );
-
+				renderer.xr.setSession( session );
 				button.textContent = 'STOP AR';
-				sessionInit.domOverlay.root.style.display = '';
 
 				currentSession = session;
 
@@ -66,7 +25,6 @@ class ARButton {
 				currentSession.removeEventListener( 'end', onSessionEnded );
 
 				button.textContent = 'START AR';
-				sessionInit.domOverlay.root.style.display = 'none';
 
 				currentSession = null;
 
@@ -104,33 +62,9 @@ class ARButton {
 
 					currentSession.end();
 
-					if ( navigator.xr.offerSession !== undefined ) {
-
-						navigator.xr.offerSession( 'immersive-ar', sessionInit )
-							.then( onSessionStarted )
-							.catch( ( err ) => {
-
-								console.warn( err );
-
-							} );
-
-					}
-
 				}
 
 			};
-
-			if ( navigator.xr.offerSession !== undefined ) {
-
-				navigator.xr.offerSession( 'immersive-ar', sessionInit )
-					.then( onSessionStarted )
-					.catch( ( err ) => {
-
-						console.warn( err );
-
-					} );
-
-			}
 
 		}
 
@@ -154,16 +88,6 @@ class ARButton {
 			disableButton();
 
 			button.textContent = 'AR NOT SUPPORTED';
-
-		}
-
-		function showARNotAllowed( exception ) {
-
-			disableButton();
-
-			console.warn( 'Exception when trying to call xr.isSessionSupported', exception );
-
-			button.textContent = 'AR NOT ALLOWED';
 
 		}
 
@@ -195,7 +119,7 @@ class ARButton {
 
 				supported ? showStartAR() : showARNotSupported();
 
-			} ).catch( showARNotAllowed );
+			} ).catch( showARNotSupported );
 
 			return button;
 
