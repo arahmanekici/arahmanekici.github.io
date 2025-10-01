@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TÜGVA Logo Sertifikası</title>
     <script src="https://unpkg.com/pdf-lib@1.17.0/dist/pdf-lib.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <style>
         body {
@@ -68,6 +69,9 @@
             color: #666;
             margin-top: 10px;
         }
+        #renderCanvas {
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -78,6 +82,7 @@
         <div id="loading" class="loading" style="display: none;">Oluşturuluyor...</div>
         <img id="preview" alt="Önizleme" style="display: none;" />
     </div>
+    <canvas id="renderCanvas"></canvas>
 
     <script>
         async function generateCertificate() {
@@ -101,29 +106,38 @@
             try {
                 // PDF oluştur
                 const { PDFDocument, rgb } = PDFLib;
-                const existingPdfBytes = await fetch('logo.pdf').then(res => res.arrayBuffer());
+                const existingPdfBytes = await fetch('logo.pdf').then(res => {
+                    if (!res.ok) throw new Error('logo.pdf dosyası bulunamadı. Depoda kök dizinde olduğundan emin olun: https://github.com/arahmanekici/arahmanekici.github.io');
+                    return res.arrayBuffer();
+                });
                 const pdfDoc = await PDFDocument.load(existingPdfBytes);
                 const pages = pdfDoc.getPages();
                 const firstPage = pages[0];
                 const { width, height } = firstPage.getSize();
 
-                // Font yükle (Museo900 yoksa standart font kullan)
+                // Font yükle (Museo900)
                 let customFont;
                 try {
-                    const fontBytes = await fetch('Museo900.ttf').then(res => res.arrayBuffer());
-                    customFont = await pdfDoc.embedFont(fontBytes);
+                    const fontBytes = await fetch('Museo900.ttf').then(res => {
+                        if (!res.ok) throw new Error('Museo900.ttf dosyası bulunamadı. Depoda kök dizinde olduğundan emin olun: https://github.com/arahmanekici/arahmanekici.github.io');
+                        return res.arrayBuffer();
+                    });
+                    customFont = await pdfDoc.embedFont(fontBytes, { subset: true });
                 } catch (e) {
-                    console.warn('Custom font yüklenemedi, standart font kullanılıyor:', e);
-                    customFont = await pdfDoc.embedFont(PDFLib.StandardFonts.HelveticaBold);
+                    console.warn('Museo900 yüklenemedi, Noto Sans kullanılıyor:', e);
+                    const notoSansBytes = await fetch('https://fonts.gstatic.com/s/notosans/v36/NG1oq3IyaLiqQJxxfN4mO3v2jF5h_9Iu.woff2').then(res => {
+                        if (!res.ok) throw new Error('Noto Sans fontu yüklenemedi.');
+                        return res.arrayBuffer();
+                    });
+                    customFont = await pdfDoc.embedFont(notoSansBytes, { subset: true });
                 }
 
-                // Metin boyutunu hesapla ve ortala
+                // Metni ekle
                 const fontSize = 41;
                 const textWidth = customFont.widthOfTextAtSize(userText, fontSize);
-                const x = (width - textWidth) / 2;
-                const y = 150; // Alt kısma yerleştir (logonun altına)
+                const x = (width - textWidth) / 2; // Yatayda ortala
+                const y = 100; // Logonun altına yerleştir (yerelde y=500 idi, ayarlanabilir)
 
-                // Metni ekle
                 firstPage.drawText(userText, {
                     x: x,
                     y: y,
@@ -136,8 +150,35 @@
                 const pdfBytes = await pdfDoc.save();
                 downloadFile(pdfBytes, `logo_${cleanText}.pdf`, 'application/pdf');
 
-                // PNG oluştur (basit canvas yöntemi)
-                createPNGPreview(firstPage, userText, customFont, width, height, cleanText);
+                // PDF'yi PNG'ye dönüştür (pdf.js ile)
+                const pdfData = new Uint8Array(pdfBytes);
+                const pdfDocRender = await pdfjsLib.getDocument({ data: pdfData }).promise;
+                const page = await pdfDocRender.getPage(1);
+                const viewport = page.getViewport({ scale: 1.0 });
+
+                const canvas = document.getElementById('renderCanvas');
+                canvas.width = viewport.width;
+                canvas.height = viewport.height;
+                const ctx = canvas.getContext('2d');
+
+                // Arka planı şeffaf yap
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                // PDF'yi canvas'a render et
+                const renderContext = {
+                    canvasContext: ctx,
+                    viewport: viewport,
+                };
+                await page.render(renderContext).promise;
+
+                // PNG indir
+                const pngDataUrl = canvas.toDataURL('image/png');
+                downloadFile(dataURLtoBlob(pngDataUrl), `logo_${cleanText}.png`, 'image/png');
+                
+                // Önizleme göster
+                const preview = document.getElementById('preview');
+                preview.src = pngDataUrl;
+                preview.style.display = 'block';
 
             } catch (error) {
                 console.error('Hata:', error);
@@ -155,35 +196,6 @@
             link.download = filename;
             link.click();
             URL.revokeObjectURL(link.href);
-        }
-
-        async function createPNGPreview(firstPage, userText, customFont, width, height, cleanText) {
-            // Basit PNG önizleme için canvas kullan
-            const canvas = document.createElement('canvas');
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            
-            // Arka planı şeffaf yap
-            ctx.clearRect(0, 0, width, height);
-            
-            // Font ayarla (web font)
-            ctx.font = '41px Arial'; // Museo900 yerine Arial (web uyumluluğu için)
-            ctx.fillStyle = '#00B6C5';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'bottom';
-            
-            // Metni çiz
-            ctx.fillText(userText, width / 2, height - 150);
-            
-            // PNG indir
-            const pngDataUrl = canvas.toDataURL('image/png');
-            downloadFile(dataURLtoBlob(pngDataUrl), `logo_${cleanText}.png`, 'image/png');
-            
-            // Önizleme göster
-            const preview = document.getElementById('preview');
-            preview.src = pngDataUrl;
-            preview.style.display = 'block';
         }
 
         function dataURLtoBlob(dataURL) {
