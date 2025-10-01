@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TÜGVA Logo Sertifikası</title>
+    <script src="https://unpkg.com/pdf-lib@1.17.0/dist/pdf-lib.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+            padding: 20px;
+        }
+        .container {
+            text-align: center;
+            padding: 30px;
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            max-width: 400px;
+            width: 100%;
+        }
+        h2 {
+            color: #00B6C5;
+            margin-bottom: 20px;
+        }
+        input[type="text"] {
+            padding: 12px;
+            font-size: 16px;
+            margin: 10px 0;
+            width: 100%;
+            max-width: 300px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            box-sizing: border-box;
+        }
+        button {
+            padding: 12px 30px;
+            font-size: 16px;
+            background-color: #00B6C5;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        button:hover {
+            background-color: #0098a6;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        #preview {
+            margin-top: 20px;
+            max-width: 100%;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        .loading {
+            color: #666;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>TÜGVA Sertifika Oluştur</h2>
+        <input type="text" id="userText" placeholder="Metni girin (ör. KAYSERİ)" />
+        <button onclick="generateCertificate()" id="generateBtn">Sertifika Oluştur</button>
+        <div id="loading" class="loading" style="display: none;">Oluşturuluyor...</div>
+        <img id="preview" alt="Önizleme" style="display: none;" />
+    </div>
+
+    <script>
+        async function generateCertificate() {
+            const userText = document.getElementById('userText').value.trim();
+            if (!userText) {
+                alert('Lütfen bir metin girin!');
+                return;
+            }
+            
+            const cleanText = userText.replace(/[^a-zA-Z0-9 _]/g, '').trim().replace(/\s+/g, '_');
+            if (!cleanText) {
+                alert('Geçerli bir dosya adı oluşturulamadı!');
+                return;
+            }
+
+            const btn = document.getElementById('generateBtn');
+            const loading = document.getElementById('loading');
+            btn.disabled = true;
+            loading.style.display = 'block';
+
+            try {
+                // PDF oluştur
+                const { PDFDocument, rgb } = PDFLib;
+                const existingPdfBytes = await fetch('logo.pdf').then(res => res.arrayBuffer());
+                const pdfDoc = await PDFDocument.load(existingPdfBytes);
+                const pages = pdfDoc.getPages();
+                const firstPage = pages[0];
+                const { width, height } = firstPage.getSize();
+
+                // Font yükle (Museo900 yoksa standart font kullan)
+                let customFont;
+                try {
+                    const fontBytes = await fetch('Museo900.ttf').then(res => res.arrayBuffer());
+                    customFont = await pdfDoc.embedFont(fontBytes);
+                } catch (e) {
+                    console.warn('Custom font yüklenemedi, standart font kullanılıyor:', e);
+                    customFont = await pdfDoc.embedFont(PDFLib.StandardFonts.HelveticaBold);
+                }
+
+                // Metin boyutunu hesapla ve ortala
+                const fontSize = 41;
+                const textWidth = customFont.widthOfTextAtSize(userText, fontSize);
+                const x = (width - textWidth) / 2;
+                const y = 150; // Alt kısma yerleştir (logonun altına)
+
+                // Metni ekle
+                firstPage.drawText(userText, {
+                    x: x,
+                    y: y,
+                    size: fontSize,
+                    font: customFont,
+                    color: rgb(0/255, 182/255, 197/255), // #00B6C5
+                });
+
+                // PDF kaydet
+                const pdfBytes = await pdfDoc.save();
+                downloadFile(pdfBytes, `logo_${cleanText}.pdf`, 'application/pdf');
+
+                // PNG oluştur (basit canvas yöntemi)
+                createPNGPreview(firstPage, userText, customFont, width, height, cleanText);
+
+            } catch (error) {
+                console.error('Hata:', error);
+                alert('Bir hata oluştu: ' + error.message);
+            } finally {
+                btn.disabled = false;
+                loading.style.display = 'none';
+            }
+        }
+
+        function downloadFile(bytes, filename, mimeType) {
+            const blob = new Blob([bytes], { type: mimeType });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = filename;
+            link.click();
+            URL.revokeObjectURL(link.href);
+        }
+
+        async function createPNGPreview(firstPage, userText, customFont, width, height, cleanText) {
+            // Basit PNG önizleme için canvas kullan
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            
+            // Arka planı şeffaf yap
+            ctx.clearRect(0, 0, width, height);
+            
+            // Font ayarla (web font)
+            ctx.font = '41px Arial'; // Museo900 yerine Arial (web uyumluluğu için)
+            ctx.fillStyle = '#00B6C5';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'bottom';
+            
+            // Metni çiz
+            ctx.fillText(userText, width / 2, height - 150);
+            
+            // PNG indir
+            const pngDataUrl = canvas.toDataURL('image/png');
+            downloadFile(dataURLtoBlob(pngDataUrl), `logo_${cleanText}.png`, 'image/png');
+            
+            // Önizleme göster
+            const preview = document.getElementById('preview');
+            preview.src = pngDataUrl;
+            preview.style.display = 'block';
+        }
+
+        function dataURLtoBlob(dataURL) {
+            const [header, data] = dataURL.split(',');
+            const mime = header.match(/:(.*?);/)[1];
+            const bstr = atob(data);
+            const n = bstr.length;
+            const u8arr = new Uint8Array(n);
+            for (let i = 0; i < n; i++) {
+                u8arr[i] = bstr.charCodeAt(i);
+            }
+            return new Blob([u8arr], { type: mime });
+        }
+    </script>
+</body>
+</html>
